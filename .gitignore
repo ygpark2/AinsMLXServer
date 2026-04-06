@@ -20,10 +20,15 @@ DerivedData/
 node_modules/
 /frontend/build/
 /frontend/.svelte-kit/
+/frontend/.build/
 .svelte-kit/
+
+# Local agent/cache
+/.codex/
 
 # App Build Output
 /Public/
+/Resources/*.metallib
 
 # Python
 __pycache__/

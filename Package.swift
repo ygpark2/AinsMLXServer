@@ -10,8 +10,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.89.0"),
-        // Apple 공식 MLX Swift 바인딩
-        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.10.0"), // ✅ 콤마 추가
+        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.31.3"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "2.31.3"),
         // YAML 파싱을 위한 Yams 라이브러리 추가
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0")
     ],
@@ -21,7 +21,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "MLX", package: "mlx-swift"),
-                .product(name: "MLXRandom", package: "mlx-swift"),
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
                 .product(name: "Yams", package: "Yams") // Yams 타겟 추가
             ]
         ),
