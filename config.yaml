@@ -1,0 +1,31 @@
+# config.yaml
+server:
+  port: 8382
+
+model:
+  # HuggingFace mlx-community Gemma 3 model path
+  # Choose based on your Mac's RAM (minimum 32GB recommended for 27B, 16GB for 9B)
+  path: "mlx-community/gemma-3-27b-it-4bit"
+  # path: "mlx-community/gemma-3-9b-it-4bit" # (Alternative) For 16GB RAM Macs
+  
+  # Gemma Instruct model prompt template specification
+  prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+
+generation:
+  max_tokens: 4096      # Gemma 3 handles long context well, so a generous limit is set
+  temperature: 0.3      # Recommended 0.1~0.3 for fact-based or logical answers
+  top_p: 0.95
+  
+# model:
+  # HuggingFace mlx-community Qwen 2.5 Coder model path
+  # Mac RAM 32GB+: Qwen2.5-Coder-32B-Instruct-4bit
+  # Mac RAM 16GB: Qwen2.5-Coder-14B-Instruct-4bit (Alternative)
+  # path: "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
+  
+  # Qwen 2.5 Instruct model prompt template (ChatML format)
+  # prompt_template: "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+
+# generation:
+  # max_tokens: 4096      # Generous token limit for long code snippets
+  # temperature: 0.2      # Low temperature (0.1~0.3) recommended for coding tasks
+  # top_p: 0.95

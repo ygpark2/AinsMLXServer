@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # v1.0.0과 같은 태그가 푸시될 때 실행
+
+jobs:
+  build-and-release:
+    runs-on: macos-14 # Apple Silicon (M1/M2) 지원을 위해 macOS 14 사용
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build UI (SvelteKit)
+        run: make build-ui
+
+      - name: Build Backend (Swift)
+        run: make build
+
+      - name: Prepare Release Package
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          BINARY_NAME="AinsMLXServer"
+          RELEASE_NAME="AinsMLXServer-${VERSION}-macos-arm64"
+          
+          # 바이너리 파일 복사 및 이름 변경
+          cp .build/release/${BINARY_NAME} ./${RELEASE_NAME}
+          
+          echo "PACKAGE_PATH=${RELEASE_NAME}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.PACKAGE_PATH }}
