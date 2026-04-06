@@ -1,3 +1,9 @@
+# Load environment variables from .env
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
+
 # Project Settings
 EXECUTABLE_NAME = AinsMLXServer
 BUILD_PATH = .build/release/$(EXECUTABLE_NAME)
@@ -54,6 +60,28 @@ test-chat:
 		-H "Content-Type: application/json" \
 		-d '{"model": "codestral", "messages": [{"role": "user", "content": "Fibonacci sequence python code"}], "temperature": 0.2}'
 	@echo "\n✅ Request complete"
+
+# Release target (Create a GitHub release locally)
+# Usage: make release v=v0.1.0
+.PHONY: release
+release: all
+	@if [ -z "$(v)" ]; then \
+		echo "❌ Error: Please provide a version tag. (Usage: make release v=v0.1.0)"; \
+		exit 1; \
+	fi
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "❌ Error: GITHUB_TOKEN is not set in .env"; \
+		exit 1; \
+	fi
+	@echo "🏷️ Creating git tag $(v)..."
+	git tag $(v)
+	git push origin $(v)
+	@echo "🚀 Creating GitHub Release $(v)..."
+	@BINARY_NAME="AinsMLXServer-$(v)-macos-arm64"; \
+	cp $(BUILD_PATH) ./$$BINARY_NAME; \
+	GH_TOKEN=$(GITHUB_TOKEN) gh release create $(v) ./$$BINARY_NAME --title "Release $(v)" --notes "Automated release from Makefile"
+	@rm -f AinsMLXServer-$(v)-macos-arm64
+	@echo "✅ Release $(v) published successfully!"
 
 # Clear build cache
 .PHONY: clean
