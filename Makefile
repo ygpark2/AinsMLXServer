@@ -12,6 +12,7 @@ build-ui:
 	@echo "🎨 Building SvelteKit frontend..."
 	cd frontend && npm run build
 	@echo "📂 Copying built files to Public folder..."
+	mkdir -p Public
 	rm -rf Public/*
 	cp -r frontend/build/* Public/
 	@echo "✅ Frontend build and deployment complete"
