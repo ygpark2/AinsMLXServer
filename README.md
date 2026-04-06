@@ -10,6 +10,8 @@ AinsMLXServer is a high-performance, lightweight LLM server built with **Apple M
 - **Zero Configuration Setup**: Starts with sensible defaults, but remains highly customizable via YAML.
 - **Single Binary Distribution**: Easy to deploy and share.
 
+![AinsMLXServer Screenshot](docs/main.png)
+
 ---
 
 ## 🛠 How It Works: The "Embedded Assets" Magic
