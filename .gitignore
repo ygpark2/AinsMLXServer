@@ -29,6 +29,7 @@ node_modules/
 # App Build Output
 /Public/
 /Resources/*.metallib
+AinsMLXServer-v0.0.1-macos-arm64
 
 # Python
 __pycache__/

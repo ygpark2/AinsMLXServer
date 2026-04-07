@@ -75,12 +75,16 @@ Notes:
 ### For Users (Fastest way)
 
 1. **Download**: Grab the latest release for macOS (arm64) from the [Releases](https://github.com/ygpark2/AinsMLXServer/releases) page.
-2. **Run**:
+2. **Remove quarantine attribute** (if macOS blocks the app):
+   ```bash
+   xattr -dr com.apple.quarantine AinsMLXServer-vX.X.X-macos-arm64
+   ```
+3. **Run**:
    ```bash
    chmod +x AinsMLXServer-vX.X.X-macos-arm64
    ./AinsMLXServer-vX.X.X-macos-arm64
    ```
-3. **Chat**: Open your browser and go to [http://127.0.0.1:8382](http://127.0.0.1:8382).
+4. **Chat**: Open your browser and go to [http://127.0.0.1:8382](http://127.0.0.1:8382).
 
 ### For Developers (Build from Source)
 

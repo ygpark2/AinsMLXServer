@@ -20,6 +20,7 @@ SWIFTPM_RESOLVE_STAMP = .build/swiftpm-resolved.hash
 MLX_SOURCE_ROOT = .build/checkouts/mlx-swift/Source/Cmlx
 RESOURCES_DIR = Resources
 MLX_METALLIB_PATH = $(RESOURCES_DIR)/mlx.metallib
+EMBEDDED_ASSETS_PAYLOAD_PATH = $(RESOURCES_DIR)/embedded_assets_payload.zlib
 METAL_TOOLCHAIN_ID ?= com.apple.dt.toolchain.Metal.32023.883
 BUILD_MODE ?= debug
 MODE ?=
@@ -119,8 +120,38 @@ build:
 	@$(MAKE) --no-print-directory ensure-swift-deps
 	@$(MAKE) --no-print-directory build-metallib MODE=release
 	@echo "🚀 Building $(EXECUTABLE_NAME) in release mode..."
-	$(SWIFT) build --disable-sandbox -c release
+	@mkdir -p $(SWIFTPM_CACHE_DIR) $(SWIFTPM_CONFIG_DIR) $(SWIFTPM_SECURITY_DIR)
+	@set -o pipefail; \
+	LOG_FILE=".build/swift-build-release.log"; \
+	if ! $(SWIFT) build $(SWIFTPM_COMMON_FLAGS) -c release 2>&1 | tee "$$LOG_FILE"; then \
+		if rg -n "missing required module '_NumericsShims'" "$$LOG_FILE" >/dev/null 2>&1; then \
+			echo "⚠️ Detected _NumericsShims module cache issue. Cleaning and retrying once..."; \
+			$(SWIFT) package $(SWIFTPM_COMMON_FLAGS) clean; \
+			$(SWIFT) build $(SWIFTPM_COMMON_FLAGS) -c release; \
+		else \
+			exit 1; \
+		fi; \
+	fi
 	@echo "✅ Build complete: $(BUILD_PATH)"
+
+# Build deployable single executable (binary + mlx.metallib bundled)
+# Usage: make build-deploy v=v0.1.0
+.PHONY: build-deploy
+build-deploy: embed-assets build
+	@if [ -z "$(v)" ]; then \
+		echo "❌ Error: Please provide a version tag. (Usage: make build-deploy v=v0.1.0)"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(MLX_METALLIB_PATH)" ]; then \
+		echo "❌ Error: Missing $(MLX_METALLIB_PATH). Run make build-metallib MODE=release first."; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(EMBEDDED_ASSETS_PAYLOAD_PATH)" ]; then \
+		echo "❌ Error: Missing $(EMBEDDED_ASSETS_PAYLOAD_PATH). Run make embed-assets first."; \
+		exit 1; \
+	fi
+	@OUT_NAME="AinsMLXServer-$(v)-macos-arm64"; \
+	scripts/build_single_executable.sh "$(BUILD_PATH)" "$(MLX_METALLIB_PATH)" "$(EMBEDDED_ASSETS_PAYLOAD_PATH)" "./$$OUT_NAME"
 
 .PHONY: build-metallib
 build-metallib:
@@ -217,6 +248,31 @@ release: all
 	@rm -f AinsMLXServer-$(v)-macos-arm64
 	@echo "✅ Release $(v) published successfully!"
 
+# Deploy a single built binary to GitHub release assets using GH_TOKEN from .env
+# Usage: make deploy-package v=v0.1.0
+.PHONY: deploy-package
+deploy-package: build-deploy
+	@if [ -z "$(v)" ]; then \
+		echo "❌ Error: Please provide a version tag. (Usage: make deploy-package v=v0.1.0)"; \
+		exit 1; \
+	fi
+	@if [ -z "$(GH_TOKEN)" ]; then \
+		echo "❌ Error: GH_TOKEN is not set in .env"; \
+		exit 1; \
+	fi
+	@BINARY_NAME="AinsMLXServer-$(v)-macos-arm64"; \
+	echo "📦 Preparing single-file executable asset $$BINARY_NAME"; \
+	if ! GH_TOKEN=$(GH_TOKEN) gh release view $(v) >/dev/null 2>&1; then \
+		echo "ℹ️ Release $(v) does not exist. Creating it first..."; \
+		GH_TOKEN=$(GH_TOKEN) gh release create $(v) --title "Release $(v)" --notes "Automated package upload from Makefile"; \
+	fi; \
+	GH_TOKEN=$(GH_TOKEN) gh release upload $(v) "./$$BINARY_NAME" --clobber; \
+	echo "✅ Uploaded $$BINARY_NAME to release $(v)"
+
+# Backward-compatible alias
+.PHONY: upload-package
+upload-package: deploy-package
+
 # Clear build cache
 .PHONY: clean
 clean:
@@ -225,4 +281,5 @@ clean:
 	rm -rf .build
 	rm -rf Public/*
 	rm -rf frontend/build
+	rm -f $(EMBEDDED_ASSETS_PAYLOAD_PATH)
 	@echo "✅ Clean complete!"
