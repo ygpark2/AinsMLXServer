@@ -1,16 +1,35 @@
 # config.yaml
 server:
   port: 8382
+  max_payload_size: "200mb"
 
 # 🚀 Active Model Selection
 # Choose one ID from the 'available_models' list below.
-active_model_id: "gemma-2-9b"
+active_model_id: "qwen-3.6-35b-dwq"
 
 # 📚 List of Available Models
 available_models:
+  - id: "qwen-3.6-35b-dwq"
+    path: "mlx-community/Qwen3.6-35B-A3B-4bit-DWQ"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<|im_start|>system\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'assistant' %}<|im_start|>assistant\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'tool' %}<|im_start|>tool\n{{ message['content'] }}<|im_end|>\n{% else %}<|im_start|>user\n{{ message['content'] }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
+    generation:
+      max_tokens: 4096
+      temperature: 0.2
+      top_p: 0.95
+    description: "Qwen3.6 MoE 모델 (DWQ 양자화), 최고의 가성비와 지능 제공"
+
+  - id: "gemma-4-31b-dwq"
+    path: "mlx-community/gemma-4-31b-it-4bit-DWQ"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'tool' %}<start_of_turn>user\nTool result:\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
+    generation:
+      max_tokens: 4096
+      temperature: 0.3
+      top_p: 0.95
+    description: "Google Gemma 4 (31B) DWQ 버전, 뛰어난 논리력과 한국어 성능"
+
   - id: "gemma-3-1b"
     path: "mlx-community/gemma-3-1b-it-4bit"
-    prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'tool' %}<start_of_turn>user\nTool result:\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
     generation:
       max_tokens: 2048
       temperature: 0.3
@@ -19,7 +38,7 @@ available_models:
 
   - id: "gemma-3-4b"
     path: "mlx-community/gemma-3-text-4b-it-4bit"
-    prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'tool' %}<start_of_turn>user\nTool result:\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
     generation:
       max_tokens: 2048
       temperature: 0.3
@@ -28,7 +47,7 @@ available_models:
 
   - id: "gemma-3-12b"
     path: "mlx-community/gemma-3-text-12b-it-4bit"
-    prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'tool' %}<start_of_turn>user\nTool result:\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
     generation:
       max_tokens: 4096
       temperature: 0.3
@@ -37,7 +56,7 @@ available_models:
 
   - id: "gemma-3-27b"
     path: "mlx-community/gemma-3-text-27b-it-4bit"
-    prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'tool' %}<start_of_turn>user\nTool result:\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
     generation:
       max_tokens: 4096
       temperature: 0.3
@@ -46,7 +65,7 @@ available_models:
 
   - id: "gemma-2-9b"
     path: "mlx-community/gemma-2-9b-it-4bit"
-    prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'tool' %}<start_of_turn>user\nTool result:\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
     generation:
       max_tokens: 4096
       temperature: 0.3
@@ -55,7 +74,7 @@ available_models:
 
   - id: "qwen-2.5-coder-32b"
     path: "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
-    prompt_template: "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<|im_start|>system\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'assistant' %}<|im_start|>assistant\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'tool' %}<|im_start|>tool\n{{ message['content'] }}<|im_end|>\n{% else %}<|im_start|>user\n{{ message['content'] }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
     generation:
       max_tokens: 4096
       temperature: 0.2
@@ -64,9 +83,18 @@ available_models:
 
   - id: "qwen-2.5-coder-14b"
     path: "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit"
-    prompt_template: "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<|im_start|>system\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'assistant' %}<|im_start|>assistant\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'tool' %}<|im_start|>tool\n{{ message['content'] }}<|im_end|>\n{% else %}<|im_start|>user\n{{ message['content'] }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
     generation:
       max_tokens: 4096
       temperature: 0.2
       top_p: 0.95
     description: "Specialized for coding, works on 16GB RAM"
+
+  - id: "qwen-3.6-35b"
+    path: "mlx-community/Qwen3.6-35B-A3B-4bit"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<|im_start|>system\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'assistant' %}<|im_start|>assistant\n{{ message['content'] }}<|im_end|>\n{% elif message['role'] == 'tool' %}<|im_start|>tool\n{{ message['content'] }}<|im_end|>\n{% else %}<|im_start|>user\n{{ message['content'] }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
+    generation:
+      max_tokens: 4096
+      temperature: 0.2
+      top_p: 0.95
+    description: "Qwen3.6 MoE 모델, 높은 추론 성능과 효율성 제공"

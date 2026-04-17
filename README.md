@@ -130,7 +130,7 @@ active_model_id: "gemma-2-9b"
 available_models:
   - id: "gemma-2-9b"
     path: "mlx-community/gemma-2-9b-it-4bit"
-    prompt_template: "<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+    chat_template: "{% for message in messages %}{% if message['role'] == 'system' %}<start_of_turn>system\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% else %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"
     generation:
       max_tokens: 4096
       temperature: 0.3

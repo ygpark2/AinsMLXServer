@@ -3,21 +3,104 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 
-func makeChatInput(from messages: [ChatMessage]) -> UserInput {
+typealias ToolSpec = [String: any Sendable]
+
+struct ModelGenerationResult {
+    let text: String
+    let promptTokens: Int
+    let completionTokens: Int
+    let finishReason: String
+    let toolCalls: [OpenAIToolCall]
+}
+
+func convertTools(_ tools: [RawTool]?) -> [ToolSpec]? {
+    guard let tools, !tools.isEmpty else { return nil }
+    return tools.map { tool in
+        var function = [String: any Sendable](
+            dictionaryLiteral:
+                ("name", tool.function.name),
+                ("description", tool.function.description ?? "")
+        )
+        if let parameters = tool.function.parameters?.sendableValue as? [String: any Sendable] {
+            function["parameters"] = parameters
+        }
+        return [
+            "type": tool.type,
+            "function": function,
+        ]
+    }
+}
+
+func makeChatInput(from messages: [ChatMessage], tools: [ToolSpec]? = nil) -> UserInput {
     let chatMessages: [Chat.Message] = messages.map { message in
-        switch message.role {
+        let content = message.textForModel
+        switch message.normalizedRole {
         case "system":
-            return .system(message.content)
+            return .system(content)
         case "assistant":
-            return .assistant(message.content)
+            return .assistant(content)
         case "tool":
-            return .tool(message.content)
+            return .tool(content)
         default:
-            return .user(message.content)
+            return .user(content)
         }
     }
 
-    return UserInput(chat: chatMessages)
+    return UserInput(chat: chatMessages, tools: tools)
+}
+
+func makeTokenizerMessages(from messages: [ChatMessage]) -> [[String: any Sendable]] {
+    messages.compactMap { message in
+        let content = message.textForModel
+        guard !content.isEmpty || message.tool_calls != nil || message.tool_call_id != nil else {
+            return nil
+        }
+
+        var payload: [String: any Sendable] = [
+            "role": message.normalizedRole,
+            "content": content,
+        ]
+
+        if let name = message.name, !name.isEmpty {
+            payload["name"] = name
+        }
+        if let toolCallID = message.tool_call_id, !toolCallID.isEmpty {
+            payload["tool_call_id"] = toolCallID
+        }
+        if let toolCalls = message.tool_calls, !toolCalls.isEmpty {
+            payload["tool_calls"] = toolCalls.map { call in
+                [
+                    "id": call.id,
+                    "type": call.type,
+                    "function": [
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    ],
+                ] as [String: any Sendable]
+            }
+        }
+
+        return payload
+    }
+}
+
+func toolArgumentsJSONString(_ arguments: [String: MLXLMCommon.JSONValue]) -> String {
+    let jsonObject = arguments.mapValues { $0.anyValue }
+    guard let data = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.sortedKeys]) else {
+        return "{}"
+    }
+    return String(decoding: data, as: UTF8.self)
+}
+
+func openAIToolCall(from toolCall: ToolCall, id: String, index: Int? = nil) -> OpenAIToolCall {
+    OpenAIToolCall(
+        index: index,
+        id: id,
+        function: OpenAIFunctionCall(
+            name: toolCall.function.name,
+            arguments: toolArgumentsJSONString(toolCall.function.arguments)
+        )
+    )
 }
 
 actor ModelRuntime {
@@ -61,31 +144,88 @@ actor ModelRuntime {
         return container
     }
 
-    func generate(
-        messages: [ChatMessage],
-        temperature: Float?,
-        maxTokens: Int?
-    ) async throws -> (text: String, promptTokens: Int, completionTokens: Int, finishReason: String) {
-        let container = try await loadContainer()
-        let userInput = makeChatInput(from: messages)
+    private func generationParameters(temperature: Float?, maxTokens: Int?) -> GenerateParameters {
         let generationTemperature = temperature ?? config.model.generation.temperature
         let maxTokenLimit = maxTokens ?? config.model.generation.max_tokens
-        let params = GenerateParameters(
+        return GenerateParameters(
             maxTokens: maxTokenLimit,
             temperature: generationTemperature,
             topP: config.model.generation.top_p,
             repetitionPenalty: 1.1
         )
+    }
+
+    private func prepareInput(
+        container: ModelContainer,
+        messages: [ChatMessage],
+        tools: [ToolSpec]?
+    ) async throws -> LMInput {
+        let tokenizerMessages = makeTokenizerMessages(from: messages)
+        let chatTemplate = config.model.chat_template
+        let tokenIDs = try await container.perform { context in
+            if let chatTemplate, !chatTemplate.isEmpty {
+                print("🧩 [Model] Using config chat_template override")
+                return try context.tokenizer.applyChatTemplate(
+                    messages: tokenizerMessages,
+                    chatTemplate: .literal(chatTemplate),
+                    addGenerationPrompt: true,
+                    truncation: false,
+                    maxLength: nil,
+                    tools: tools
+                )
+            }
+
+            return try context.tokenizer.applyChatTemplate(
+                messages: tokenizerMessages,
+                chatTemplate: nil,
+                addGenerationPrompt: true,
+                truncation: false,
+                maxLength: nil,
+                tools: tools
+            )
+        }
+        return LMInput(tokens: MLXArray(tokenIDs))
+    }
+
+    private func runGeneration(
+        messages: [ChatMessage],
+        temperature: Float?,
+        maxTokens: Int?,
+        tools: [ToolSpec]? = nil
+    ) async throws -> (stream: AsyncStream<Generation>, promptTokenCount: Int) {
+        guard !messages.isEmpty else {
+            throw NSError(domain: "AinsMLXServer", code: 400, userInfo: [NSLocalizedDescriptionKey: "At least one message is required."])
+        }
+
+        let container = try await loadContainer()
+        let params = generationParameters(temperature: temperature, maxTokens: maxTokens)
 
         print("🧩 [Model] Preparing input...")
-        let preparedInput = try await container.prepare(input: userInput)
-        print("🧩 [Model] Input prepared")
+        let preparedInput = try await prepareInput(container: container, messages: messages, tools: tools)
         let promptTokenCount = preparedInput.text.tokens.size
-        print("🧩 [Model] Starting generation (prompt tokens: \(promptTokenCount), max tokens: \(maxTokenLimit))")
+        let maxTokensDescription = params.maxTokens.map(String.init) ?? "nil"
+        print("🧩 [Model] Starting generation (prompt tokens: \(promptTokenCount), max tokens: \(maxTokensDescription))")
         let stream = try await container.generate(input: preparedInput, parameters: params)
+        return (stream: stream, promptTokenCount: promptTokenCount)
+    }
+
+    func generate(
+        messages: [ChatMessage],
+        temperature: Float?,
+        maxTokens: Int?,
+        tools: [RawTool]? = nil
+    ) async throws -> ModelGenerationResult {
+        let mlxTools = convertTools(tools)
+        let (stream, promptTokenCount) = try await runGeneration(
+            messages: messages,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            tools: mlxTools
+        )
 
         var output = ""
         var completionInfo: GenerateCompletionInfo?
+        var toolCalls = [ToolCall]()
         var sawChunk = false
 
         for await generation in stream {
@@ -98,17 +238,30 @@ actor ModelRuntime {
                 output += text
             case .info(let info):
                 completionInfo = info
-            case .toolCall:
-                continue
+            case .toolCall(let toolCall):
+                toolCalls.append(toolCall)
             }
         }
 
+        let completionTokens = completionInfo?.generationTokenCount ?? 0
         print("✅ [Model] Generation finished")
 
         let cleanedOutput = output
             .replacingOccurrences(of: "<end_of_turn>", with: "")
             .replacingOccurrences(of: "</s>", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !toolCalls.isEmpty {
+            return ModelGenerationResult(
+                text: cleanedOutput,
+                promptTokens: promptTokenCount,
+                completionTokens: completionTokens,
+                finishReason: "tool_calls",
+                toolCalls: toolCalls.enumerated().map { index, toolCall in
+                    openAIToolCall(from: toolCall, id: "call_\(index)_\(UUID().uuidString.lowercased())")
+                }
+            )
+        }
 
         let finishReason: String
         switch completionInfo?.stopReason {
@@ -120,11 +273,26 @@ actor ModelRuntime {
             finishReason = "stop"
         }
 
-        return (
+        return ModelGenerationResult(
             text: cleanedOutput,
             promptTokens: promptTokenCount,
-            completionTokens: completionInfo?.generationTokenCount ?? 0,
-            finishReason: finishReason
+            completionTokens: completionTokens,
+            finishReason: finishReason,
+            toolCalls: []
+        )
+    }
+
+    func generateStream(
+        messages: [ChatMessage],
+        temperature: Float?,
+        maxTokens: Int?,
+        tools: [RawTool]? = nil
+    ) async throws -> (stream: AsyncStream<Generation>, promptTokenCount: Int) {
+        try await runGeneration(
+            messages: messages,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            tools: convertTools(tools)
         )
     }
 }

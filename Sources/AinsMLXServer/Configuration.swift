@@ -21,6 +21,7 @@ func loadDotEnv() {
 struct ServerConfig: Codable {
     struct ServerSettings: Codable {
         let port: Int
+        let max_payload_size: String?
     }
 
     struct GenerationSettings: Codable {
@@ -32,7 +33,7 @@ struct ServerConfig: Codable {
     struct ModelSettings: Codable {
         let id: String
         let path: String
-        let prompt_template: String
+        let chat_template: String?
         let generation: GenerationSettings
     }
 
@@ -88,6 +89,5 @@ func loadConfiguration(from path: String?) throws -> ServerConfig {
     }
 
     print("🎯 Active Model: \(selectedModel.id) (\(selectedModel.path))")
-
     return ServerConfig(server: rawConfig.server, model: selectedModel)
 }
