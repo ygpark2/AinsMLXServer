@@ -205,7 +205,9 @@ actor ModelRuntime {
         let promptTokenCount = preparedInput.text.tokens.size
         let maxTokensDescription = params.maxTokens.map(String.init) ?? "nil"
         print("🧩 [Model] Starting generation (prompt tokens: \(promptTokenCount), max tokens: \(maxTokensDescription))")
-        let stream = try await container.generate(input: consume preparedInput, parameters: params)
+        let stream = try await container.perform(nonSendable: preparedInput) { context, preparedInput in
+            try MLXLMCommon.generate(input: preparedInput, parameters: params, context: context)
+        }
         return (stream: stream, promptTokenCount: promptTokenCount)
     }
 
