@@ -155,38 +155,6 @@ actor ModelRuntime {
         )
     }
 
-    private func prepareInput(
-        container: ModelContainer,
-        messages: [ChatMessage],
-        tools: [ToolSpec]?
-    ) async throws -> LMInput {
-        let tokenizerMessages = makeTokenizerMessages(from: messages)
-        let chatTemplate = config.model.chat_template
-        let tokenIDs = try await container.perform { context in
-            if let chatTemplate, !chatTemplate.isEmpty {
-                print("🧩 [Model] Using config chat_template override")
-                return try context.tokenizer.applyChatTemplate(
-                    messages: tokenizerMessages,
-                    chatTemplate: .literal(chatTemplate),
-                    addGenerationPrompt: true,
-                    truncation: false,
-                    maxLength: nil,
-                    tools: tools
-                )
-            }
-
-            return try context.tokenizer.applyChatTemplate(
-                messages: tokenizerMessages,
-                chatTemplate: nil,
-                addGenerationPrompt: true,
-                truncation: false,
-                maxLength: nil,
-                tools: tools
-            )
-        }
-        return LMInput(tokens: MLXArray(tokenIDs))
-    }
-
     private func runGeneration(
         messages: [ChatMessage],
         temperature: Float?,
@@ -199,14 +167,40 @@ actor ModelRuntime {
 
         let container = try await loadContainer()
         let params = generationParameters(temperature: temperature, maxTokens: maxTokens)
+        let tokenizerMessages = makeTokenizerMessages(from: messages)
+        let chatTemplate = config.model.chat_template
 
         print("🧩 [Model] Preparing input...")
-        let preparedInput = try await prepareInput(container: container, messages: messages, tools: tools)
-        let promptTokenCount = preparedInput.text.tokens.size
-        let maxTokensDescription = params.maxTokens.map(String.init) ?? "nil"
-        print("🧩 [Model] Starting generation (prompt tokens: \(promptTokenCount), max tokens: \(maxTokensDescription))")
-        let stream = try await container.perform(nonSendable: preparedInput) { context, preparedInput in
-            try MLXLMCommon.generate(input: preparedInput, parameters: params, context: context)
+        let (stream, promptTokenCount) = try await container.perform { context in
+            let tokenIDs: [Int]
+            if let chatTemplate, !chatTemplate.isEmpty {
+                print("🧩 [Model] Using config chat_template override")
+                tokenIDs = try context.tokenizer.applyChatTemplate(
+                    messages: tokenizerMessages,
+                    chatTemplate: .literal(chatTemplate),
+                    addGenerationPrompt: true,
+                    truncation: false,
+                    maxLength: nil,
+                    tools: tools
+                )
+            } else {
+                tokenIDs = try context.tokenizer.applyChatTemplate(
+                    messages: tokenizerMessages,
+                    chatTemplate: nil,
+                    addGenerationPrompt: true,
+                    truncation: false,
+                    maxLength: nil,
+                    tools: tools
+                )
+            }
+
+            let promptTokenCount = tokenIDs.count
+            let maxTokensDescription = params.maxTokens.map(String.init) ?? "nil"
+            print("🧩 [Model] Starting generation (prompt tokens: \(promptTokenCount), max tokens: \(maxTokensDescription))")
+
+            let preparedInput = LMInput(tokens: MLXArray(tokenIDs))
+            let stream = try MLXLMCommon.generate(input: preparedInput, parameters: params, context: context)
+            return (stream, promptTokenCount)
         }
         return (stream: stream, promptTokenCount: promptTokenCount)
     }
@@ -262,6 +256,18 @@ actor ModelRuntime {
                 toolCalls: toolCalls.enumerated().map { index, toolCall in
                     openAIToolCall(from: toolCall, id: "call_\(index)_\(UUID().uuidString.lowercased())")
                 }
+            )
+        }
+
+        let parsedFallbackToolCalls = fallbackToolCalls(from: cleanedOutput, allowedTools: tools)
+        if !parsedFallbackToolCalls.isEmpty {
+            print("🧩 [Model] Promoted textual tool-call output into structured tool_calls")
+            return ModelGenerationResult(
+                text: "",
+                promptTokens: promptTokenCount,
+                completionTokens: completionTokens,
+                finishReason: "tool_calls",
+                toolCalls: parsedFallbackToolCalls
             )
         }
 

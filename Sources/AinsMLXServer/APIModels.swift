@@ -50,14 +50,7 @@ struct ChatMessage: Content, Sendable {
             parts.append(contentText)
         }
 
-        if let toolCalls = tool_calls, !toolCalls.isEmpty {
-            let renderedCalls = toolCalls.map { call in
-                "tool_call(id=\(call.id), name=\(call.function.name), arguments=\(call.function.arguments))"
-            }.joined(separator: "\n")
-            parts.append(renderedCalls)
-        }
-
-        if let toolCallID = tool_call_id, !toolCallID.isEmpty {
+        if normalizedRole == "tool", let toolCallID = tool_call_id, !toolCallID.isEmpty {
             parts.append("tool_call_id=\(toolCallID)")
         }
 

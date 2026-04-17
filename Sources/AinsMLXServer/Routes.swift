@@ -98,13 +98,6 @@ func configureRoutes(
         }
 
         if input.stream == true {
-            let (stream, _) = try await modelRuntime.generateStream(
-                messages: input.messages,
-                temperature: input.temperature,
-                maxTokens: input.max_tokens,
-                tools: requestedTools
-            )
-
             let requestId = "chatcmpl-\(UUID().uuidString.lowercased())"
             let responseModel = input.model ?? config.model.path
             let created = Int(Date().timeIntervalSince1970)
@@ -119,88 +112,147 @@ func configureRoutes(
             response.body = .init(stream: { writer in
                 Task {
                     do {
-                        try await writeSSEChunk(
-                            makeStreamChunk(
-                                id: requestId,
-                                created: created,
-                                model: responseModel,
-                                delta: .assistantRole
-                            ),
-                            writer: writer
-                        )
+                        if let requestedTools, !requestedTools.isEmpty {
+                            let generated = try await modelRuntime.generate(
+                                messages: input.messages,
+                                temperature: input.temperature,
+                                maxTokens: input.max_tokens,
+                                tools: requestedTools
+                            )
 
-                        var sawToolCall = false
-                        var sentTerminal = false
-                        var streamedToolCallIndex = 0
+                            try await writeSSEChunk(
+                                makeStreamChunk(
+                                    id: requestId,
+                                    created: created,
+                                    model: responseModel,
+                                    delta: .assistantRole
+                                ),
+                                writer: writer
+                            )
 
-                        for await generation in stream {
-                            switch generation {
-                            case .chunk(let text):
-                                guard !text.isEmpty else { continue }
+                            if !generated.toolCalls.isEmpty {
                                 try await writeSSEChunk(
                                     makeStreamChunk(
                                         id: requestId,
                                         created: created,
                                         model: responseModel,
-                                        delta: ChunkDelta(role: nil, content: text, tool_calls: nil)
+                                        delta: ChunkDelta(role: nil, content: nil, tool_calls: generated.toolCalls)
                                     ),
                                     writer: writer
                                 )
-                            case .toolCall(let toolCall):
-                                sawToolCall = true
-                                let streamToolCall = openAIToolCall(
-                                    from: toolCall,
-                                    id: "call_stream_\(streamedToolCallIndex)_\(UUID().uuidString.lowercased())",
-                                    index: streamedToolCallIndex
-                                )
-                                streamedToolCallIndex += 1
+                            } else if !generated.text.isEmpty {
                                 try await writeSSEChunk(
                                     makeStreamChunk(
                                         id: requestId,
                                         created: created,
                                         model: responseModel,
-                                        delta: ChunkDelta(role: nil, content: nil, tool_calls: [streamToolCall])
+                                        delta: ChunkDelta(role: nil, content: generated.text, tool_calls: nil)
                                     ),
                                     writer: writer
                                 )
-                            case .info(let info):
-                                let finishReason: String
-                                if sawToolCall {
-                                    finishReason = "tool_calls"
-                                } else {
-                                    switch info.stopReason {
-                                    case .length:
-                                        finishReason = "length"
-                                    case .cancelled, .stop:
-                                        finishReason = "stop"
-                                    }
-                                }
-
-                                try await writeSSEChunk(
-                                    makeStreamChunk(
-                                        id: requestId,
-                                        created: created,
-                                        model: responseModel,
-                                        delta: .empty,
-                                        finishReason: finishReason
-                                    ),
-                                    writer: writer
-                                )
-                                sentTerminal = true
                             }
-                        }
 
-                        if !sentTerminal {
                             try await writeSSEChunk(
                                 makeStreamChunk(
                                     id: requestId,
                                     created: created,
                                     model: responseModel,
                                     delta: .empty,
-                                    finishReason: sawToolCall ? "tool_calls" : "stop"
+                                    finishReason: generated.finishReason
                                 ),
                                 writer: writer
                             )
+                        } else {
+                            let (stream, _) = try await modelRuntime.generateStream(
+                                messages: input.messages,
+                                temperature: input.temperature,
+                                maxTokens: input.max_tokens,
+                                tools: requestedTools
+                            )
+
+                            try await writeSSEChunk(
+                                makeStreamChunk(
+                                    id: requestId,
+                                    created: created,
+                                    model: responseModel,
+                                    delta: .assistantRole
+                                ),
+                                writer: writer
+                            )
+
+                            var sawToolCall = false
+                            var sentTerminal = false
+                            var streamedToolCallIndex = 0
+
+                            for await generation in stream {
+                                switch generation {
+                                case .chunk(let text):
+                                    guard !text.isEmpty else { continue }
+                                    try await writeSSEChunk(
+                                        makeStreamChunk(
+                                            id: requestId,
+                                            created: created,
+                                            model: responseModel,
+                                            delta: ChunkDelta(role: nil, content: text, tool_calls: nil)
+                                        ),
+                                        writer: writer
+                                    )
+                                case .toolCall(let toolCall):
+                                    sawToolCall = true
+                                    let streamToolCall = openAIToolCall(
+                                        from: toolCall,
+                                        id: "call_stream_\(streamedToolCallIndex)_\(UUID().uuidString.lowercased())",
+                                        index: streamedToolCallIndex
+                                    )
+                                    streamedToolCallIndex += 1
+                                    try await writeSSEChunk(
+                                        makeStreamChunk(
+                                            id: requestId,
+                                            created: created,
+                                            model: responseModel,
+                                            delta: ChunkDelta(role: nil, content: nil, tool_calls: [streamToolCall])
+                                        ),
+                                        writer: writer
+                                    )
+                                case .info(let info):
+                                    let finishReason: String
+                                    if sawToolCall {
+                                        finishReason = "tool_calls"
+                                    } else {
+                                        switch info.stopReason {
+                                        case .length:
+                                            finishReason = "length"
+                                        case .cancelled, .stop:
+                                            finishReason = "stop"
+                                        }
+                                    }
+
+                                    try await writeSSEChunk(
+                                        makeStreamChunk(
+                                            id: requestId,
+                                            created: created,
+                                            model: responseModel,
+                                            delta: .empty,
+                                            finishReason: finishReason
+                                        ),
+                                        writer: writer
+                                    )
+                                    sentTerminal = true
+                                }
+                            }
+
+                            if !sentTerminal {
+                                try await writeSSEChunk(
+                                    makeStreamChunk(
+                                        id: requestId,
+                                        created: created,
+                                        model: responseModel,
+                                        delta: .empty,
+                                        finishReason: sawToolCall ? "tool_calls" : "stop"
+                                    ),
+                                    writer: writer
+                                )
+                            }
                         }
 
                         try await writeSSEDone(writer: writer)

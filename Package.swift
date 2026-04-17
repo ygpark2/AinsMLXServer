@@ -26,6 +26,10 @@ let package = Package(
                 .product(name: "Yams", package: "Yams") // Yams 타겟 추가
             ]
         ),
+        .testTarget(
+            name: "AinsMLXServerTests",
+            dependencies: ["AinsMLXServer"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
