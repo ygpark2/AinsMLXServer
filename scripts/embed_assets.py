@@ -190,7 +190,13 @@ private extension Data {{
     func zlibDecompressed(initialCapacity: Int = 65536) -> Data? {{
         if self.isEmpty {{ return Data() }}
 
-        var stream = compression_stream()
+        var stream = compression_stream(
+            dst_ptr: UnsafeMutablePointer<UInt8>(bitPattern: 0)!,
+            dst_size: 0,
+            src_ptr: UnsafePointer<UInt8>(bitPattern: 0)!,
+            src_size: 0,
+            state: nil
+        )
         var status = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB)
         guard status != COMPRESSION_STATUS_ERROR else {{
             return nil

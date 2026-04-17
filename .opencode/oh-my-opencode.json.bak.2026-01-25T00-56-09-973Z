@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
+  "agents": {
+    "default": {
+      "model": "gpt-5"
+    },
+    "Sisyphus": {
+      "model": "gpt-5.2-codex"
+    },
+    "librarian": {
+      "model": "gpt-5"
+    },
+    "explore": {
+      "model": "gpt-5-codex-mini"
+    },
+    "frontend-ui-ux-engineer": {
+      "model": "gpt-5"
+    },
+    "document-writer": {
+      "model": "gpt-5"
+    },
+    "multimodal-looker": {
+      "model": "gpt-5"
+    }
+  }
+}

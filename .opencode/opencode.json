@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "oh-my-opencode"
+  ],
+  "provider": {
+    "cliproxy": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "CLIProxyAPI (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8382/v1",
+        "apiKey": "{env:OPENAI_API_KEY}"
+      },
+      "models": {
+        "qwen-3.6-35b-dwq": { "name": "qwen-3.6-35b-dwq" },
+        "gpt-5": { "name": "gpt-5" },
+        "gpt-5-codex-mini": { "name": "gpt-5-codex-mini" },
+        "gpt-5.1": { "name": "gpt-5.1" }
+      }
+    }
+  }
+}

@@ -16,6 +16,9 @@ enum ServerBootstrap {
         let env = try Environment.detect(arguments: commandLineArgs)
         let app = try await Application.make(env)
 
+        // Set max body size from configuration (default to 10mb if not specified)
+        app.routes.defaultMaxBodySize = ByteCount(stringLiteral: config.server.max_payload_size ?? "10mb")
+
         configureMiddleware(on: app)
         app.http.server.configuration.port = config.server.port
 
@@ -40,7 +43,7 @@ enum ServerBootstrap {
     private static func preloadModel(_ modelRuntime: ModelRuntime, modelId: String) async {
         print("🚀 [System] Pre-loading model: \(modelId)...")
         do {
-            _ = try await modelRuntime.generate(messages: [], temperature: nil, maxTokens: 1)
+            _ = try await modelRuntime.generate(messages: [ChatMessage(role: "user", text: "hi")], temperature: nil, maxTokens: 1)
             print("✅ [System] Model pre-loaded successfully.")
         } catch {
             print("❌ [System] Failed to pre-load model: \(error)")

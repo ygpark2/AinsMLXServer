@@ -175,12 +175,13 @@ link-metallib:
 		echo "💡 Run 'make build-metallib MODE=$(EFFECTIVE_MODE)' once to generate it."; \
 		exit 1; \
 	fi; \
-	ln -sf "$(CURDIR)/$(MLX_METALLIB_PATH)" "$$BIN_PATH/mlx.metallib"
+	ln -sf "$(CURDIR)/$(MLX_METALLIB_PATH)" "$$BIN_PATH/mlx.metallib"; \
+	ln -sf "$(CURDIR)/$(MLX_METALLIB_PATH)" "$$BIN_PATH/default.metallib"
 
-# Run server (using default config.yaml)
+# Run server in debug mode (default)
 .PHONY: run
 run: build-ui embed-assets build-swift-if-needed
-	@echo "🌐 Starting server..."
+	@echo "🌐 Starting server (Debug mode)..."
 	@if [ ! -f Public/index.html ]; then \
 		echo "⚠️ Public/index.html is missing; embedded UI will fall back to the 404 page."; \
 	fi
@@ -188,6 +189,17 @@ run: build-ui embed-assets build-swift-if-needed
 	@$(MAKE) --no-print-directory link-metallib BUILD_MODE=debug
 	@BIN_PATH="$$( $(SWIFT) build $(SWIFTPM_COMMON_FLAGS) --show-bin-path )"; \
 	"$$BIN_PATH/$(EXECUTABLE_NAME)"
+
+.PHONY: run-debug
+run-debug: run
+
+# Run server in release mode
+.PHONY: run-release
+run-release: build-ui embed-assets build
+	@echo "🌐 Starting server (Release mode)..."
+	@$(MAKE) --no-print-directory link-metallib BUILD_MODE=release
+	@BIN_PATH="$$( $(SWIFT) build $(SWIFTPM_COMMON_FLAGS) -c release --show-bin-path )"; \
+	"$$BIN_PATH/$(EXECUTABLE_NAME)" -c $(if $(c),$(c),config.yaml)
 
 # Run server with a custom configuration file (e.g., make run-config c=custom_config.yaml)
 .PHONY: run-config

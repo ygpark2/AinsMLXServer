@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
+  "agents": {
+    "default": {
+      "model": "qwen-3.6-35b-dwq"
+    },
+    "sisyphus": {
+      "model": "qwen-3.6-35b-dwq"
+    },
+    "librarian": {
+      "model": "qwen-3.6-35b-dwq"
+    },
+    "explore": {
+      "model": "qwen-3.6-35b-dwq"
+    },
+    "frontend-ui-ux-engineer": {
+      "model": "qwen-3.6-35b-dwq"
+    },
+    "document-writer": {
+      "model": "qwen-3.6-35b-dwq"
+    },
+    "multimodal-looker": {
+      "model": "qwen-3.6-35b-dwq"
+    }
+  }
+}

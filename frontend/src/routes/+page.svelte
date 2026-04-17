@@ -364,7 +364,7 @@ import {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					messages: [{ role: 'user', content: text }]
+					messages: messages.map((m) => ({ role: m.role, content: m.content }))
 				})
 			});
 
