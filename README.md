@@ -173,6 +173,43 @@ curl -X POST http://localhost:8382/v1/chat/completions \
 
 ---
 
+## 🔌 OpenCode Integration
+
+AinsMLXServer can be used directly as an OpenAI-compatible provider in `OpenCode`.
+
+Example project-local `.opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ainsmlx": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "AinsMLXServer",
+      "options": {
+        "baseURL": "http://127.0.0.1:8382/v1",
+        "apiKey": "dummy"
+      },
+      "models": {
+        "qwen-3.6-35b-dwq": { "name": "qwen-3.6-35b-dwq" },
+        "gemma-4-31b-dwq": { "name": "gemma-4-31b-dwq" }
+      }
+    }
+  },
+  "model": "ainsmlx/qwen-3.6-35b-dwq",
+  "small_model": "ainsmlx/qwen-3.6-35b-dwq"
+}
+```
+
+Notes:
+- Start AinsMLXServer first, then launch `OpenCode`.
+- The API endpoint is `http://127.0.0.1:8382/v1`.
+- `apiKey` is required by some clients even when the server does not validate it, so a dummy value is fine.
+- If you use model-specific formatting, define `chat_template` for each model in `config.yaml`.
+- `.opencode/` is ignored by Git in this repo, so local OpenCode settings stay untracked.
+
+---
+
 ## 🚢 Releasing
 
 To create a new GitHub release locally:
