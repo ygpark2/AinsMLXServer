@@ -25,6 +25,7 @@ node_modules/
 
 # Local agent/cache
 /.codex/
+/.opencode/
 
 # App Build Output
 /Public/
