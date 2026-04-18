@@ -5,10 +5,18 @@ server:
 
 # 🚀 Active Model Selection
 # Choose one ID from the 'available_models' list below.
-active_model_id: "qwen-3.6-35b-dwq"
+active_model_id: "glm-4-9b-mlx-6bit"
 
 # 📚 List of Available Models
 available_models:
+  - id: "glm-4-9b-mlx-6bit"
+    path: "mlx-community/GLM-4-9B-0414-6bit"
+    generation:
+      max_tokens: 4096
+      temperature: 0.2
+      top_p: 0.95
+    description: "GLM-4-9B MLX 6bit, 로컬 에이전트/툴 사용 테스트용 균형형 설정"
+
   - id: "qwen-3.6-35b-dwq"
     path: "mlx-community/Qwen3.6-35B-A3B-4bit-DWQ"
     generation:
