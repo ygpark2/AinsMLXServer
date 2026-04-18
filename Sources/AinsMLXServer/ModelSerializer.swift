@@ -191,38 +191,52 @@ enum ModelSerializer {
         }
 
         let systemMessages = normalizedMessages.filter { $0.role == "system" }
-        let nonSystemMessages = normalizedMessages.filter { $0.role != "system" }
-
-        let userTurnIndexes = nonSystemMessages.enumerated().compactMap { index, message in
-            if message.role == "user",
-               !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return index
-            }
-            return nil
+        let lastUserIndex = normalizedMessages.lastIndex { message in
+            message.role == "user" && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        let tailStartIndex: Int
-        if userTurnIndexes.count >= 3 {
-            tailStartIndex = userTurnIndexes[userTurnIndexes.count - 3]
+        let focusedMessages: [ModelMessage]
+        if let lastUserIndex {
+            focusedMessages = Array(normalizedMessages[lastUserIndex...]).compactMap { message in
+                if shouldDropAssistantNarrationForGLM(message) {
+                    return nil
+                }
+
+                if message.role == "tool" {
+                    return ModelMessage(
+                        role: message.role,
+                        content: truncateToolContentForGLM(message.content),
+                        name: message.name,
+                        toolCallID: message.toolCallID,
+                        toolCalls: message.toolCalls
+                    )
+                }
+
+                return message
+            }
         } else {
-            tailStartIndex = 0
-        }
-
-        let tailMessages = Array(nonSystemMessages.dropFirst(tailStartIndex)).map { message in
-            if message.role == "tool" {
-                return ModelMessage(
-                    role: message.role,
-                    content: truncateToolContentForGLM(message.content),
-                    name: message.name,
-                    toolCallID: message.toolCallID,
-                    toolCalls: message.toolCalls
-                )
+            focusedMessages = normalizedMessages.compactMap { message in
+                if shouldDropAssistantNarrationForGLM(message) {
+                    return nil
+                }
+                return message
             }
-            return message
         }
 
-        let combined = systemMessages + tailMessages
-        let maxMessages = 20
+        let toolUseInstruction = ModelMessage(
+            role: "system",
+            content: """
+            When tools are available, prefer tool calls over natural-language planning.
+            Do not describe your plan first.
+            If you need more information, call the appropriate tool immediately.
+            """,
+            name: nil,
+            toolCallID: nil,
+            toolCalls: nil
+        )
+
+        let combined = systemMessages + [toolUseInstruction] + focusedMessages.filter { $0.role != "system" }
+        let maxMessages = 10
         if combined.count > maxMessages {
             let preservedSystem = combined.prefix { $0.role == "system" }
             let nonSystemSuffix = combined.dropFirst(preservedSystem.count).suffix(maxMessages - preservedSystem.count)
@@ -244,5 +258,24 @@ enum ModelSerializer {
 
         let head = lines.prefix(maxLines).joined(separator: "\n")
         return head + "\n...[truncated]"
+    }
+
+    private static func shouldDropAssistantNarrationForGLM(_ message: ModelMessage) -> Bool {
+        guard message.role == "assistant", message.toolCalls == nil else {
+            return false
+        }
+
+        let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+
+        let prefixes = [
+            "알겠습니다.",
+            "이 프로젝트에 있는 코드를 분석하기 위해",
+            "이 분석은 최대한 포괄적이어야 하며",
+            "I detect ",
+            "My approach:"
+        ]
+
+        return prefixes.contains { trimmed.hasPrefix($0) }
     }
 }
