@@ -236,11 +236,13 @@ func fallbackToolCalls(from output: String, allowedTools: [RawTool]? = nil) -> [
 
     guard !parsedCalls.isEmpty else { return [] }
 
-    return parsedCalls.enumerated().map { index, call in
+    let toolCalls = parsedCalls.enumerated().map { index, call in
         OpenAIToolCall(
             index: index,
             id: "call_fallback_\(index)_\(UUID().uuidString.lowercased())",
             function: OpenAIFunctionCall(name: call.name, arguments: call.arguments)
         )
     }
+
+    return normalizeToolCalls(toolCalls, allowedTools: allowedTools)
 }

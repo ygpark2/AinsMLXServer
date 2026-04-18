@@ -33,7 +33,6 @@ struct ServerConfig: Codable {
     struct ModelSettings: Codable {
         let id: String
         let path: String
-        let chat_template: String?
         let generation: GenerationSettings
     }
 

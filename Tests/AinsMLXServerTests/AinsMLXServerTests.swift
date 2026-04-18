@@ -107,3 +107,61 @@ import Testing
     #expect(parsed[2].function.name == "list_directory")
     #expect(parsed[2].function.arguments.contains("\"path\":\".\""))
 }
+
+@Test func normalizesReadAliasesFromFallbackToolCalls() async throws {
+    let tools = [
+        RawTool(
+            type: "function",
+            function: RawFunction(
+                name: "read",
+                description: "Read a file",
+                parameters: .object([
+                    "type": .string("object"),
+                    "required": .array([.string("filePath")]),
+                    "properties": .object([
+                        "filePath": .object(["type": .string("string")])
+                    ])
+                ])
+            )
+        )
+    ]
+
+    let output = #"read(path=".opencode")"#
+    let parsed = fallbackToolCalls(from: output, allowedTools: tools)
+    #expect(parsed.count == 1)
+    #expect(parsed[0].function.arguments.contains(#""filePath":".opencode""#))
+}
+
+@Test func normalizesTaskRunInBackgroundDefault() async throws {
+    let tools = [
+        RawTool(
+            type: "function",
+            function: RawFunction(
+                name: "task",
+                description: "Run a delegated task",
+                parameters: .object([
+                    "type": .string("object"),
+                    "required": .array([.string("subagent_type"), .string("run_in_background")]),
+                    "properties": .object([
+                        "subagent_type": .object(["type": .string("string")]),
+                        "run_in_background": .object(["type": .string("boolean")])
+                    ])
+                ])
+            )
+        )
+    ]
+
+    let toolCalls = [
+        OpenAIToolCall(
+            id: "call_test",
+            function: OpenAIFunctionCall(
+                name: "task",
+                arguments: #"{"subagent_type":"explore","prompt":"scan repo"}"#
+            )
+        )
+    ]
+
+    let normalized = normalizeToolCalls(toolCalls, allowedTools: tools)
+    #expect(normalized.count == 1)
+    #expect(normalized[0].function.arguments.contains(#""run_in_background":true"#))
+}

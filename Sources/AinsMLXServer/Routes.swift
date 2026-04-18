@@ -90,7 +90,26 @@ func configureRoutes(
         }
 
         let requestedTools = resolveRequestedTools(input.tools, toolChoice: input.tool_choice)
+        let conversationState = ConversationReducer.ingest(messages: input.messages)
+        let modelTranscript = ModelInputBuilder.build(from: conversationState)
+        let serializationStrategy = ModelSerializationStrategy.resolve(
+            modelID: config.model.id,
+            modelPath: config.model.path
+        )
+        let modelMessages = ModelSerializer.serialize(
+            transcript: modelTranscript,
+            strategy: serializationStrategy
+        )
         print("📝 [OpenAI API] Request Received (Model: \(input.model ?? "default"), Messages: \(input.messages.count), Stream: \(input.stream ?? false), Tools: \(requestedTools?.count ?? 0))")
+        if isVerboseRequestLoggingEnabled() {
+            let roleSummary = modelMessages.map { message in
+                if message.tool_calls != nil {
+                    return "\(message.role):tool_calls"
+                }
+                return message.role
+            }.joined(separator: " -> ")
+            print("🧠 [Model Input] Serialized messages: \(modelMessages.count) [\(roleSummary)]")
+        }
         if isVerboseRequestLoggingEnabled() {
             for (index, message) in input.messages.enumerated() {
                 print("🧾 [OpenAI API] Message[\(index)] \(message.debugSummary)")
@@ -114,7 +133,7 @@ func configureRoutes(
                     do {
                         if let requestedTools, !requestedTools.isEmpty {
                             let generated = try await modelRuntime.generate(
-                                messages: input.messages,
+                                messages: modelMessages,
                                 temperature: input.temperature,
                                 maxTokens: input.max_tokens,
                                 tools: requestedTools
@@ -164,7 +183,7 @@ func configureRoutes(
                             )
                         } else {
                             let (stream, _) = try await modelRuntime.generateStream(
-                                messages: input.messages,
+                                messages: modelMessages,
                                 temperature: input.temperature,
                                 maxTokens: input.max_tokens,
                                 tools: requestedTools
@@ -266,7 +285,7 @@ func configureRoutes(
         }
 
         let generated = try await modelRuntime.generate(
-            messages: input.messages,
+            messages: modelMessages,
             temperature: input.temperature,
             maxTokens: input.max_tokens,
             tools: requestedTools

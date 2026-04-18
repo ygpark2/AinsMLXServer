@@ -93,7 +93,7 @@ func toolArgumentsJSONString(_ arguments: [String: MLXLMCommon.JSONValue]) -> St
 }
 
 func openAIToolCall(from toolCall: ToolCall, id: String, index: Int? = nil) -> OpenAIToolCall {
-    OpenAIToolCall(
+    return OpenAIToolCall(
         index: index,
         id: id,
         function: OpenAIFunctionCall(
@@ -168,31 +168,16 @@ actor ModelRuntime {
         let container = try await loadContainer()
         let params = generationParameters(temperature: temperature, maxTokens: maxTokens)
         let tokenizerMessages = makeTokenizerMessages(from: messages)
-        let chatTemplate = config.model.chat_template
-
         print("🧩 [Model] Preparing input...")
         let (stream, promptTokenCount) = try await container.perform { context in
-            let tokenIDs: [Int]
-            if let chatTemplate, !chatTemplate.isEmpty {
-                print("🧩 [Model] Using config chat_template override")
-                tokenIDs = try context.tokenizer.applyChatTemplate(
-                    messages: tokenizerMessages,
-                    chatTemplate: .literal(chatTemplate),
-                    addGenerationPrompt: true,
-                    truncation: false,
-                    maxLength: nil,
-                    tools: tools
-                )
-            } else {
-                tokenIDs = try context.tokenizer.applyChatTemplate(
-                    messages: tokenizerMessages,
-                    chatTemplate: nil,
-                    addGenerationPrompt: true,
-                    truncation: false,
-                    maxLength: nil,
-                    tools: tools
-                )
-            }
+            let tokenIDs = try context.tokenizer.applyChatTemplate(
+                messages: tokenizerMessages,
+                chatTemplate: nil,
+                addGenerationPrompt: true,
+                truncation: false,
+                maxLength: nil,
+                tools: tools
+            )
 
             let promptTokenCount = tokenIDs.count
             let maxTokensDescription = params.maxTokens.map(String.init) ?? "nil"
@@ -211,6 +196,25 @@ actor ModelRuntime {
         maxTokens: Int?,
         tools: [RawTool]? = nil
     ) async throws -> ModelGenerationResult {
+        try await generate(
+            messages: messages,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            tools: tools,
+            repairAttempted: false,
+            textFallbackAttempted: false
+        )
+    }
+
+    private func generate(
+        messages: [ChatMessage],
+        temperature: Float?,
+        maxTokens: Int?,
+        tools: [RawTool]?,
+        repairAttempted: Bool,
+        textFallbackAttempted: Bool
+    ) async throws -> ModelGenerationResult {
+        let normalizationContext = toolNormalizationContext(from: messages)
         let mlxTools = convertTools(tools)
         let (stream, promptTokenCount) = try await runGeneration(
             messages: messages,
@@ -248,26 +252,103 @@ actor ModelRuntime {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if !toolCalls.isEmpty {
+            let openAIToolCalls = normalizeToolCalls(
+                toolCalls.enumerated().map { index, toolCall in
+                    openAIToolCall(from: toolCall, id: "call_\(index)_\(UUID().uuidString.lowercased())")
+                },
+                allowedTools: tools,
+                context: normalizationContext
+            )
+            let validation = partitionToolCalls(openAIToolCalls, allowedTools: tools)
+            if !validation.invalid.isEmpty {
+                let summary = validation.invalid.map { "\($0.function.name)(\($0.function.arguments))" }.joined(separator: ", ")
+                print("⚠️ [Tool Calls] Invalid generated tool calls: \(summary)")
+                if !repairAttempted, let repaired = try await repairInvalidToolCalls(
+                    messages: messages,
+                    temperature: temperature,
+                    maxTokens: maxTokens,
+                    tools: tools,
+                    invalidToolCalls: validation.invalid,
+                    validationErrors: validation.errors
+                ) {
+                    return repaired
+                }
+                if !validation.valid.isEmpty {
+                    print("🧩 [Tool Calls] Dropping \(validation.invalid.count) invalid tool call(s), keeping \(validation.valid.count) valid call(s)")
+                } else {
+                    print("🧩 [Tool Calls] Dropping \(validation.invalid.count) invalid tool call(s)")
+                }
+            }
+            guard !validation.valid.isEmpty else {
+                if !textFallbackAttempted {
+                    return try await recoverAsTextAfterInvalidToolCalls(
+                        messages: messages,
+                        temperature: temperature,
+                        maxTokens: maxTokens
+                    )
+                }
+                return ModelGenerationResult(
+                    text: cleanedOutput,
+                    promptTokens: promptTokenCount,
+                    completionTokens: completionTokens,
+                    finishReason: "stop",
+                    toolCalls: []
+                )
+            }
             return ModelGenerationResult(
                 text: cleanedOutput,
                 promptTokens: promptTokenCount,
                 completionTokens: completionTokens,
                 finishReason: "tool_calls",
-                toolCalls: toolCalls.enumerated().map { index, toolCall in
-                    openAIToolCall(from: toolCall, id: "call_\(index)_\(UUID().uuidString.lowercased())")
-                }
+                toolCalls: validation.valid
             )
         }
 
         let parsedFallbackToolCalls = fallbackToolCalls(from: cleanedOutput, allowedTools: tools)
         if !parsedFallbackToolCalls.isEmpty {
             print("🧩 [Model] Promoted textual tool-call output into structured tool_calls")
+            let validation = partitionToolCalls(parsedFallbackToolCalls, allowedTools: tools)
+            if !validation.invalid.isEmpty {
+                let summary = validation.invalid.map { "\($0.function.name)(\($0.function.arguments))" }.joined(separator: ", ")
+                print("⚠️ [Tool Calls] Invalid fallback tool calls: \(summary)")
+                if !repairAttempted, let repaired = try await repairInvalidToolCalls(
+                    messages: messages,
+                    temperature: temperature,
+                    maxTokens: maxTokens,
+                    tools: tools,
+                    invalidToolCalls: validation.invalid,
+                    validationErrors: validation.errors
+                ) {
+                    return repaired
+                }
+                if !validation.valid.isEmpty {
+                    print("🧩 [Tool Calls] Dropping \(validation.invalid.count) invalid fallback tool call(s), keeping \(validation.valid.count) valid call(s)")
+                } else {
+                    print("🧩 [Tool Calls] Dropping \(validation.invalid.count) invalid fallback tool call(s)")
+                }
+            }
+            guard !validation.valid.isEmpty else {
+                if !textFallbackAttempted {
+                    return try await recoverAsTextAfterInvalidToolCalls(
+                        messages: messages,
+                        temperature: temperature,
+                        maxTokens: maxTokens
+                    )
+                }
+                return ModelGenerationResult(
+                    text: cleanedOutput,
+                    promptTokens: promptTokenCount,
+                    completionTokens: completionTokens,
+                    finishReason: "stop",
+                    toolCalls: []
+                )
+            }
             return ModelGenerationResult(
                 text: "",
                 promptTokens: promptTokenCount,
                 completionTokens: completionTokens,
                 finishReason: "tool_calls",
-                toolCalls: parsedFallbackToolCalls
+                toolCalls: validation.valid
             )
         }
 
@@ -287,6 +368,71 @@ actor ModelRuntime {
             completionTokens: completionTokens,
             finishReason: finishReason,
             toolCalls: []
+        )
+    }
+
+    private func repairInvalidToolCalls(
+        messages: [ChatMessage],
+        temperature: Float?,
+        maxTokens: Int?,
+        tools: [RawTool]?,
+        invalidToolCalls: [OpenAIToolCall],
+        validationErrors: [String]
+    ) async throws -> ModelGenerationResult? {
+        guard let tools, !tools.isEmpty else { return nil }
+        let invalidToolNames = Set(invalidToolCalls.map { $0.function.name })
+        let repairTools = tools.filter { invalidToolNames.contains($0.function.name) }
+        let schemas = toolSchemas(from: repairTools)
+        let schemaHints = invalidToolNames.sorted().compactMap { name -> String? in
+            guard let schema = schemas[name] else { return nil }
+            let required = schema.required.sorted()
+            guard !required.isEmpty else { return "\(name): return a valid JSON object" }
+            return "\(name): required keys = \(required.joined(separator: ", "))"
+        }
+
+        let repairInstruction = """
+        Your previous tool call was invalid.
+        Return corrected tool_calls only.
+        Do not explain anything.
+        Use only these tool names: \(invalidToolNames.sorted().joined(separator: ", "))
+        Schema:
+        \(schemaHints.joined(separator: "\n"))
+        Validation errors:
+        \(validationErrors.joined(separator: "\n"))
+        """
+
+        print("🔧 [Tool Calls] Attempting one-shot repair for invalid tool call schema")
+
+        return try await generate(
+            messages: messages + [ChatMessage(role: "user", text: repairInstruction)],
+            temperature: temperature,
+            maxTokens: maxTokens,
+            tools: repairTools,
+            repairAttempted: true,
+            textFallbackAttempted: false
+        )
+    }
+
+    private func recoverAsTextAfterInvalidToolCalls(
+        messages: [ChatMessage],
+        temperature: Float?,
+        maxTokens: Int?
+    ) async throws -> ModelGenerationResult {
+        let recoveryInstruction = """
+        Your last tool call was invalid and will not be executed.
+        Do not call any more tools.
+        Continue with a normal assistant response using only the tool results already present in the conversation.
+        """
+
+        print("🧩 [Tool Calls] Falling back to text-only response after dropping invalid tool calls")
+
+        return try await generate(
+            messages: messages + [ChatMessage(role: "user", text: recoveryInstruction)],
+            temperature: temperature,
+            maxTokens: maxTokens,
+            tools: nil,
+            repairAttempted: true,
+            textFallbackAttempted: true
         )
     }
 

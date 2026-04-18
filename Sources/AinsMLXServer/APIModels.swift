@@ -319,6 +319,38 @@ enum APIJSONValue: Codable, Sendable {
         guard let data = try? JSONEncoder().encode(self) else { return "null" }
         return String(decoding: data, as: UTF8.self)
     }
+
+    var objectValue: [String: APIJSONValue]? {
+        guard case .object(let value) = self else { return nil }
+        return value
+    }
+
+    var stringArrayValue: [String]? {
+        guard case .array(let values) = self else { return nil }
+        return values.compactMap {
+            guard case .string(let value) = $0 else { return nil }
+            return value
+        }
+    }
+
+    var foundationValue: Any? {
+        switch self {
+        case .string(let value):
+            return value
+        case .int(let value):
+            return value
+        case .number(let value):
+            return value
+        case .bool(let value):
+            return value
+        case .object(let value):
+            return value.mapValues { $0.foundationValue ?? NSNull() }
+        case .array(let value):
+            return value.map { $0.foundationValue ?? NSNull() }
+        case .null:
+            return NSNull()
+        }
+    }
 }
 
 struct OpenAIToolCall: Codable, Hashable, Sendable {
